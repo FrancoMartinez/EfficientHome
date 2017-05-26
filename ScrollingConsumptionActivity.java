@@ -1,18 +1,13 @@
 package cl.martinez.franco.efficienthome;
 
 import android.app.AlarmManager;
-import android.app.IntentService;
-import android.app.Notification;
-import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
-import android.support.v4.app.NotificationCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.view.View;
@@ -36,8 +31,6 @@ import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.GregorianCalendar;
-import java.util.Timer;
-import java.util.TimerTask;
 
 public class ScrollingConsumptionActivity extends AppCompatActivity {
 
@@ -99,7 +92,7 @@ public class ScrollingConsumptionActivity extends AppCompatActivity {
     }
 
     private void cargaConsumo(){
-        PotenciaActual potenciaActual = new PotenciaActual(this, ip);//llamo a la clase que maneja la tabla de datos del dia actual
+        CurrentPotency potenciaActual = new CurrentPotency(this, ip);//llamo a la clase que maneja la tabla de datos del dia actual
         potenciaActual.obtenerKWH(); //solicito los datos almacenados en la tabla
         Handler handler = new Handler();
         handler.postDelayed(new Runnable() {
@@ -116,14 +109,14 @@ public class ScrollingConsumptionActivity extends AppCompatActivity {
     }
 
     public void esperarKwh(){ //solicito la tension de esta vivienda y sus respectivos precios
-        Valores valor = new Valores(this, ip, "consumo");
+        ConsumptionValues valor = new ConsumptionValues(this, ip, "consumo");
         valor.obtenerValores();
     }
 
     public void recibirListaPotencia (String resultado){ // recibo los watts
-        if(resultado.equals("Error 9")){
+        if(resultado.equals("Error 9") || resultado.equals("Error de conexión")){
             message(resultado);
-            finish();
+            //finish();
         }
         else{
             calcularKwh(resultado); //envia a calcular los kwh
@@ -131,14 +124,19 @@ public class ScrollingConsumptionActivity extends AppCompatActivity {
     }
 
     public void recibirValores(String resultado){
-        String[] precios = resultado.split(","); //lo recibido por consulta
-        System.out.println(precios[0] + " " + precios[1] + " " + precios[2]);
-        Valores valores = new Valores(Double.parseDouble(precios[0]),
-                Double.parseDouble(precios[1]),Integer.parseInt(precios[2]));
-        calcularPrecio(valores);
+        if (resultado.equals("Error de conexión")){
+            message(resultado);
+            //finish();
+        } else {
+            String[] precios = resultado.split(","); //lo recibido por consulta
+            System.out.println(precios[0] + " " + precios[1] + " " + precios[2]);
+            ConsumptionValues valores = new ConsumptionValues(Double.parseDouble(precios[0]),
+                    Double.parseDouble(precios[1]), Integer.parseInt(precios[2]));
+            calcularPrecio(valores);
+        }
     }
 
-    private void calcularPrecio(Valores valores){
+    private void calcularPrecio(ConsumptionValues valores){
         Valorkwh = valores.getValorkwh();
         ValorAdminkwh = valores.getValoradministracion();
         ValorTranskwh = valores.getValortransporte();
@@ -162,8 +160,14 @@ public class ScrollingConsumptionActivity extends AppCompatActivity {
     }
 
     private void calcularKwh(String resultado){
-        new PotenciaActual(this, ip);
-        kwhActual = Integer.parseInt(resultado);
+        new CurrentPotency(this, ip);
+        if (resultado.equals("") ){
+            kwhActual = 0;
+        } else if (resultado.equals("Error de conexión")) {
+            message(resultado);
+        } else {
+            kwhActual = Integer.parseInt(resultado);
+        }
     }
 
     public void CalcularPromedio(){
@@ -191,7 +195,7 @@ public class ScrollingConsumptionActivity extends AppCompatActivity {
             fechamin = String.valueOf(añomin) + String.valueOf(mesmin) + "01";
         }
 
-        PromedioCosto promediocosto = new PromedioCosto(this,ip, fechamin, fechamax);
+        AverageCost promediocosto = new AverageCost(this,ip, fechamin, fechamax);
         promediocosto.obtenerPromedioCosto();
     }
     public void CargarGraficoAnual() {
@@ -200,20 +204,19 @@ public class ScrollingConsumptionActivity extends AppCompatActivity {
         Calendar cal = GregorianCalendar.getInstance();
         año = String.valueOf(cal.get(Calendar.YEAR));
 
-        PotenciaMensual potenciaMensual = new PotenciaMensual(this,ip, año);
+        MonthlyPotency potenciaMensual = new MonthlyPotency(this,ip, año);
         potenciaMensual.obtenerPotenciaMensual();
 
     }
 
     public void CargarGraficoDiario() {
-        PotenciaDiaria potenciaDiaria = new PotenciaDiaria(this,ip);
+        DailyPotency potenciaDiaria = new DailyPotency(this,ip);
         potenciaDiaria.obtenerPotenciaDiaria();
     }
 
     public void recibirConsumoPorDia(String resultado){
         if(resultado.equals("Error 8")){
-            message(resultado);
-            finish();
+            message("No existe información de consumo por día, intente mañana.");
         }
         else {
             GraficoDiario = (LineChart) findViewById(R.id.LineChart);

@@ -17,7 +17,7 @@ import java.util.ArrayList;
 
 public class ScrollingConfigurationActivity extends AppCompatActivity {
 
-    private EditText IP, IPR, HoraInicio, HoraTermino, Porcentaje, TiempoRefresco, ValorkWh, ValorTranskWh, ValorAdminServ;
+    private EditText IPR, API, HoraInicio, HoraTermino, Porcentaje, TiempoRefresco, ValorkWh, ValorTranskWh, ValorAdminServ;
     private SharedPreferences prefs;
     private ArrayList<String> lstUbica = new ArrayList<String>();
     private ListView lv;
@@ -32,13 +32,15 @@ public class ScrollingConfigurationActivity extends AppCompatActivity {
 
         prefs = getSharedPreferences("Configuraciones", Context.MODE_PRIVATE);
 
-        //IPS
-
-        IP = (EditText) findViewById(R.id.txtIP);
-        IP.setText(prefs.getString("IPArduinoYun", ""));
+        //IP
 
         IPR= (EditText) findViewById(R.id.txtIPR);
         IPR.setText(prefs.getString("IPRaspberry", ""));
+
+        //IP
+
+        API= (EditText) findViewById(R.id.txtApi);
+        API.setText(prefs.getString("APIKEY", ""));
 
         //Ventilación
 
@@ -80,21 +82,25 @@ public class ScrollingConfigurationActivity extends AppCompatActivity {
         llenaUbicacion();
 
         if (!IPR.getText().toString().equals("")){
-            Valores valor = new Valores(this, IPR.getText().toString(), "configuracion");
+            ConsumptionValues valor = new ConsumptionValues(this, IPR.getText().toString(), "configuracion");
             valor.obtenerValores();
         }
 
     }
 
-    public void recibirValores(String resultado){
-        String[] precios = resultado.split(","); //lo recibido por consulta
-        System.out.println(precios[0] + " " + precios[1] + " " + precios[2]);
-        Valores valores = new Valores(Double.parseDouble(precios[0]),
-                Double.parseDouble(precios[1]),Integer.parseInt(precios[2]));
-        recibirValores(valores);
+    public void recibirValores(String resultado) {
+        if (resultado.equals("") || resultado.equals("Error de conexión")){
+            Toast.makeText(this, "Error de conexión", Toast.LENGTH_LONG).show();
+        } else {
+            String[] precios = resultado.split(","); //lo recibido por consulta
+            System.out.println(precios[0] + " " + precios[1] + " " + precios[2]);
+            ConsumptionValues valores = new ConsumptionValues(Double.parseDouble(precios[0]),
+                    Double.parseDouble(precios[1]), Integer.parseInt(precios[2]));
+            recibirValores(valores);
+        }
     }
 
-    public void recibirValores(Valores valores){
+    public void recibirValores(ConsumptionValues valores){
         ValorkWh.setText(String.valueOf(valores.getValorkwh()));
         ValorTranskWh.setText(String.valueOf(valores.getValortransporte()));
         ValorAdminServ.setText(String.valueOf(valores.getValoradministracion()));
@@ -107,11 +113,16 @@ public class ScrollingConfigurationActivity extends AppCompatActivity {
 
     public void GuardarConfIP(View view){
         SharedPreferences.Editor editor = prefs.edit();
-        editor.putString("IPArduinoYun", IP.getText().toString());
-        editor.commit();
         editor.putString("IPRaspberry", IPR.getText().toString());
         editor.commit();
-        Toast.makeText(this, "Configuración de IP guardada", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "IP guardada", Toast.LENGTH_SHORT).show();
+    }
+
+    public void GuardarAPI(View view){
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.putString("APIKEY", API.getText().toString());
+        editor.commit();
+        Toast.makeText(this, "API KEY guardada", Toast.LENGTH_SHORT).show();
     }
 
     public void GuardarConfHorarios(View view){
@@ -215,7 +226,7 @@ public class ScrollingConfigurationActivity extends AppCompatActivity {
     }
 
     public void GuardarConfConsumo(View view){
-        Valores valor = new Valores(this, IPR.getText().toString(), "configuracion");
+        ConsumptionValues valor = new ConsumptionValues(this, IPR.getText().toString(), "configuracion");
         valor.setValorkwh(Double.parseDouble(ValorkWh.getText().toString()));
         valor.setValortransporte(Double.parseDouble(ValorTranskWh.getText().toString()));
         valor.setValoradministracion(Integer.parseInt(ValorAdminServ.getText().toString()));
@@ -226,7 +237,7 @@ public class ScrollingConfigurationActivity extends AppCompatActivity {
         Toast.makeText(this, resultado, Toast.LENGTH_SHORT).show();
 
         if (!IPR.getText().toString().equals("")){
-            Valores valor = new Valores(this, IPR.getText().toString(), "configuracion");
+            ConsumptionValues valor = new ConsumptionValues(this, IPR.getText().toString(), "configuracion");
             valor.obtenerValores();
         }
     }

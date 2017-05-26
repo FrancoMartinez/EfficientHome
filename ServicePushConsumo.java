@@ -164,7 +164,9 @@ public class ServicePushConsumo extends Service {
         if(resultado.equals("Error 9")){
             System.out.println(resultado);
         }
-        else{
+        else if(resultado.equals("Error de manejo de stream")) {
+            Toast.makeText(this, "Error de conexión", Toast.LENGTH_LONG).show();
+        } else {
             kwhActual = Integer.parseInt(resultado);
         }
     }

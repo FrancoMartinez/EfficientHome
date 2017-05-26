@@ -41,6 +41,8 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
     private ListView lv, lvSensor;
     private int numconsejo;
     private TextView consejo;
+    private SharedPreferences prefs;
+    private String ip;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,10 +54,10 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
 
         consejo = (TextView) findViewById(R.id.txtConsejo);
 
-        menues.add("Historial Alertas");
+//        menues.add("Historial Alertas");
         menues.add("Historial Ventilación");
         menues.add("Consumo Eléctrico");
-        menues.add("Test Arduino");
+//        menues.add("Test Arduino");
         menues.add("Notificaciones");
         menues.add("Configuración");
 
@@ -70,16 +72,20 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
             e.printStackTrace();
         }
 
+        prefs = getSharedPreferences("Configuraciones", Context.MODE_PRIVATE);
+        ip = prefs.getString("IPRaspberry", "");
+
         CargaConsejos();
         //CargaSensores();
     }
 
     @Override
     public void onItemClick(AdapterView<?> parent, View view, int position, long id) {      //CONTROLA LOS CLICKS EN EL MENÚ
-        if (menues.get(position).equals("Test Arduino")) {
-            Intent intent = new Intent(this, ArduinoTestActivity.class);
-            startActivity(intent);
-        } else if (menues.get(position).equals("Historial Ventilación")) {
+//        if (menues.get(position).equals("Test Arduino")) {
+//            Intent intent = new Intent(this, ArduinoTestActivity.class);
+//            startActivity(intent);
+//        } else
+        if (menues.get(position).equals("Historial Ventilación")) {
             Intent intent = new Intent(this, ScrollingVentHistoryActivity.class);
             startActivity(intent);
         } else if (menues.get(position).equals("Consumo Eléctrico")) {
@@ -97,122 +103,77 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
     }
 
     public void CargaSensores(){        //MUESTRA LA TEMPERATURA DEL SENSOR EN PANTALLA PRINCIPAL
-
-        SharedPreferences prefs = getSharedPreferences("Configuraciones",Context.MODE_PRIVATE);
-        String url = prefs.getString("IPArduinoYun", "10.40.4.3");
-        url = "http://" + url + "/arduino/216";
-
-        ubicaciones.clear();
-        CargaUbicaciones(); //Carga las ubicaciones
-        if (ubicaciones.size() > 0){    //Si hay busca datos de arduino
-            try {
-                new ReadJSON().execute(url);        //Envía la URL
-            } catch (Exception e) {
-                Toast.makeText(getBaseContext(), "Error al leer datos", Toast.LENGTH_SHORT).show();
+        if (ip.equals("")){
+            Toast.makeText(this, "No existe una dirección de Raspberry PI registrada.", Toast.LENGTH_LONG).show();
+        } else {
+            ubicaciones.clear();
+            CargaUbicaciones(); //Carga las ubicaciones
+            if (ubicaciones.size() > 0){    //Si hay busca datos de arduino
+                CondensationData sensordata = new CondensationData(this, ip, "main");
+                sensordata.obtenerDatosSensores();
             }
-       }
+        }
     }
 
-    private class ReadJSON extends AsyncTask<String, Void, String> {    //Tarea asíncrona para leer JSON
+    public void recibirDatosSensores(String resultado){
+        lvSensor.setAdapter(null);
+        //Instanciar adaptador
+        final SensorAdapter adaptersensores = new SensorAdapter(lstSensores, MainActivity.this);
+        runOnUiThread(new Runnable() {
+            public void run() {adaptersensores.notifyDataSetChanged();
+            }
+        });
+        lvSensor.setAdapter(adaptersensores);
 
-        protected String doInBackground(String... urls) {   //Obtiene la info. del clima y lo retorna a onPostExecute
-            return readJSONFeed(urls[0]);
-        }
+        lstSensores.removeAll(lstSensores);
+        adaptersensores.notifyDataSetChanged();
 
-        protected void onPostExecute(String result) {
-            try {
+        String[] datosresultados = resultado.split(";");
+        for (String temporal : datosresultados) {
+            String[] dividirDatos = temporal.split(",");
 
-                lvSensor.setAdapter(null);
-                //Instanciar adaptador
-                final SensorAdapter adaptersensores = new SensorAdapter(lstSensores, MainActivity.this);
-                runOnUiThread(new Runnable() {
-                    public void run() {adaptersensores.notifyDataSetChanged();
+
+            for (int x = 0; x < ubicaciones.size(); x++){
+                String separaubicacion[] = ubicaciones.get(x).split("-");
+                if (dividirDatos[0].equals(separaubicacion[0].trim())){
+
+                    String strTemperatura;
+                    String strHumedad;
+                    Boolean existesensor = false;
+                    if (dividirDatos[1].equals("-99")){
+                        strTemperatura = "-99";
+                    } else {
+                        strTemperatura = dividirDatos[1] +"ºC";
                     }
-                });
-                lvSensor.setAdapter(adaptersensores);
 
-                lstSensores.removeAll(lstSensores);
-                adaptersensores.notifyDataSetChanged();
+                    if (dividirDatos[2].equals("-99")){
+                        strHumedad = "-99";
+                    } else {
+                        strHumedad = dividirDatos[2] +"%";
+                    }
 
-                JSONArray array = new JSONArray(result);
-                for (int i = 0; i < array.length(); i++) {
-                    JSONObject row = array.optJSONObject(i);
+                    if (separaubicacion[2].trim().equals("NO")){
+                        strTemperatura = "NO";
+                        strHumedad = "NO";
+                    }
 
-                    for (int x = 0; x < ubicaciones.size(); x++){
-                        String separaubicacion[] = ubicaciones.get(x).split("-");
-                        if (row.getString("ID").equals(separaubicacion[0].trim())){
+                    for (int y = 0; y < lstSensores.size(); y++){
+                        String sensores[] = lstSensores.get(y).split("-");
 
-                            String strTemperatura;
-                            String strHumedad;
-                            Boolean existesensor = false;
-                            if (row.getString("Temperatura").trim().toUpperCase().equals("-99")){
-                                strTemperatura = "-99";
-                            } else {
-                                Double Temperatura = Double.parseDouble(row.getString("Temperatura"));
-                                strTemperatura = String.valueOf(Math.round(Temperatura)) +"ºC";
-                            }
+                        if (sensores[0].trim().equals(dividirDatos[0].trim())){
+                            existesensor = true;
+                            lstSensores.remove(y);
+                            lstSensores.add(y, separaubicacion[0]+ " - " + separaubicacion[1] + " - T: " + strTemperatura + " - H: " + strHumedad);
 
-                            if (row.getString("Humedad").trim().toUpperCase().equals("-99")){
-                                strHumedad = "-99";
-                            } else {
-                                Double Humedad = Double.parseDouble(row.getString("Humedad"));
-                                strHumedad = String.valueOf(Math.round(Humedad)) +"%";
-                            }
-
-                            if (separaubicacion[2].trim().equals("NO")){
-                                strTemperatura = "NO";
-                                strHumedad = "NO";
-                            }
-
-                            for (int y = 0; y < lstSensores.size(); y++){
-                                String sensores[] = lstSensores.get(y).split("-");
-
-                                if (sensores[0].trim().equals(row.getString("ID").trim())){
-                                    existesensor = true;
-                                    lstSensores.remove(y);
-                                    lstSensores.add(y, separaubicacion[0]+ " - " + separaubicacion[1] + " - T: " + strTemperatura + " - H: " + strHumedad);
-
-                                }
-                            }
-                            if (!existesensor) {
-                                lstSensores.add(separaubicacion[0]+ " - " + separaubicacion[1] + " - T: " + strTemperatura + " - H: " + strHumedad);
-                            }
                         }
                     }
+                    if (!existesensor) {
+                        lstSensores.add(separaubicacion[0]+ " - " + separaubicacion[1] + " - T: " + strTemperatura + " - H: " + strHumedad);
+                    }
                 }
-                adaptersensores.notifyDataSetChanged();
-            } catch (Exception e) {
-                Log.d("ReadJSON", e.getLocalizedMessage());
             }
         }
-    }
-
-    public String readJSONFeed(String URL) {       //Descarga los datos JSON
-        StringBuilder stringBuilder = new StringBuilder();
-        HttpClient httpClient = new DefaultHttpClient();
-        HttpGet httpGet = new HttpGet(URL);
-        try {
-            HttpResponse response = httpClient.execute(httpGet);
-            StatusLine statusLine = response.getStatusLine();
-            int statusCode = statusLine.getStatusCode();
-            if (statusCode == 200) {
-                HttpEntity entity = response.getEntity();
-                InputStream inputStream = entity.getContent();
-                BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(inputStream));
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    line = line.toString().replace("NaN","-99");
-                    stringBuilder.append(line);
-                }
-                inputStream.close();
-            } else {
-                Log.d("JSON", "Error al descargar el archivo");
-            }
-        } catch (Exception e) {
-            Log.d("readJSONFeed", e.getLocalizedMessage());
-        }
-        return stringBuilder.toString();
+        adaptersensores.notifyDataSetChanged();
     }
 
     public void CargaUbicaciones(){
@@ -287,19 +248,3 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         CargaSensores();
     }
 }
-
-//    public void alarmas(){              //SETEA LA ALARMA PERO POR EL MOMENTO ESTO SE HACE DESDE LA ACTIVIDAD NOTIFICATIONACTIVITY
-//        Intent intent = new Intent(getBaseContext(), AlarmReceiver.class);
-//        PendingIntent pIntent =PendingIntent.getBroadcast(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
-//
-//
-//        Calendar cal = Calendar.getInstance();
-//        cal.setTimeInMillis(System.currentTimeMillis());
-//        cal.set (Calendar.HOUR_OF_DAY, 17);
-//        cal.set (Calendar.MINUTE, 15);
-//        cal.set (Calendar.SECOND, 00);
-//
-//        AlarmManager aMan = (AlarmManager)getSystemService(ALARM_SERVICE);
-//        aMan.setRepeating(AlarmManager.RTC_WAKEUP, cal.getTimeInMillis(), 60*1000, pIntent);
-//
-//    }

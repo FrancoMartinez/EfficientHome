@@ -1,6 +1,5 @@
 package cl.martinez.franco.efficienthome;
 
-import android.app.IntentService;
 import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -10,8 +9,6 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.support.v4.app.NotificationCompat;
-import android.widget.EditText;
-import android.widget.TextView;
 
 
 /**
@@ -33,7 +30,7 @@ public class AlarmConsumption extends BroadcastReceiver{
         MetaConsumo = prefs.getString("MetaConsumo", "0");
 
         //Para el consumo
-        PotenciaActual potenciaActual = new PotenciaActual((ScrollingConsumptionActivity) contexto, ip) ;//llamo a la clase que maneja la tabla de datos del dia actual
+        CurrentPotency potenciaActual = new CurrentPotency((ScrollingConsumptionActivity) contexto, ip) ;//llamo a la clase que maneja la tabla de datos del dia actual
         potenciaActual.obtenerKWH(); //solicito los datos almacenados en la tabla
         Handler handler = new Handler();
         handler.postDelayed(new Runnable() {
@@ -67,7 +64,7 @@ public class AlarmConsumption extends BroadcastReceiver{
     }
 
     public void esperarKwh(){ //solicito la tension de esta vivienda y sus respectivos precios
-        Valores valor = new Valores((ScrollingConfigurationActivity) contexto, ip,"push");
+        ConsumptionValues valor = new ConsumptionValues((ScrollingConfigurationActivity) contexto, ip,"push");
         valor.obtenerValores();
     }
 
@@ -76,19 +73,19 @@ public class AlarmConsumption extends BroadcastReceiver{
     }
 
     private void calcularKwh(String resultado){
-        new PotenciaActual((ScrollingConsumptionActivity) contexto, ip);
+        new CurrentPotency((ScrollingConsumptionActivity) contexto, ip);
         kwhActual = Integer.parseInt(resultado);
     }
 
     public void recibirValores(String resultado){
         String[] precios = resultado.split(","); //lo recibido por consulta
         System.out.println(precios[0] + " " + precios[1] + " " + precios[2]);
-        Valores valores = new Valores(Double.parseDouble(precios[0]),
+        ConsumptionValues valores = new ConsumptionValues(Double.parseDouble(precios[0]),
                 Double.parseDouble(precios[1]),Integer.parseInt(precios[2]));
         calcularPrecio(valores);
     }
 
-    private void calcularPrecio(Valores valores){
+    private void calcularPrecio(ConsumptionValues valores){
         Gasto = 0.0;
         Gasto = valores.getValorkwh() * kwhActual + valores.getValortransporte() * kwhActual + valores.getValoradministracion();
     }

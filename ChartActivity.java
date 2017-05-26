@@ -2,6 +2,7 @@ package cl.martinez.franco.efficienthome;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.os.AsyncTask;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
@@ -9,6 +10,15 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Toast;
 
+import com.github.mikephil.charting.charts.LineChart;
+import com.github.mikephil.charting.charts.ScatterChart;
+import com.github.mikephil.charting.components.XAxis;
+import com.github.mikephil.charting.components.YAxis;
+import com.github.mikephil.charting.data.Entry;
+import com.github.mikephil.charting.data.LineData;
+import com.github.mikephil.charting.data.LineDataSet;
+import com.github.mikephil.charting.data.ScatterData;
+import com.github.mikephil.charting.data.ScatterDataSet;
 import com.jjoe64.graphview.GraphView;
 import com.jjoe64.graphview.series.DataPoint;
 import com.jjoe64.graphview.series.PointsGraphSeries;
@@ -22,127 +32,139 @@ import org.apache.http.impl.client.DefaultHttpClient;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collections;
+import java.util.Date;
 import java.util.Iterator;
 
 public class ChartActivity extends AppCompatActivity {
-
-    public GraphView chart;
-    PointsGraphSeries<DataPoint> series;
-    String stringUrl, id;
-    Integer iTemperatura, iHumedad, Contador;
-    Double dTemperatura, dHumedad;
-    ArrayList<SensorData> datos;
+    private String ApiURL, API, ip;
+    private Integer iTemperatura, iHumedad;
+    private Boolean ExisteT, ExisteH, ExisteDato;
+    private ScatterChart Grafico;
+    private ArrayList<Entry> Dato;
+    private ArrayList<String> Datox;
+    private ScatterDataSet dataset;
+    private ScatterData scatter;
+    private java.net.URL URL;
+    private SharedPreferences prefs;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.chart);
 
-        SharedPreferences prefs = getSharedPreferences("Configuraciones", Context.MODE_PRIVATE);
-        stringUrl = prefs.getString("IPArduinoYun", "10.40.4.3");
-        stringUrl = "http://" + stringUrl + "/arduino/216";
+        prefs = getSharedPreferences("Configuraciones", Context.MODE_PRIVATE);
+        API = prefs.getString("APIKEY", "");
 
-        datos = new ArrayList<SensorData>();
+        //URL RASPBERRY PI
+        ip = prefs.getString("IPRaspberry", "");
 
-        id = getIntent().getExtras().getString("ID");
-
-        ConfigurarGrafico();
-
+        CargarUsuario();
     }
 
-    public void Cargar(View view){
-        series = new PointsGraphSeries<DataPoint>(new DataPoint[] {});
-        Contador = 0;
-        GetTempHum();
+    private void message(String msg) {
+        Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
+    }
+
+    public void CargarUsuario(){
+        URL urlusr = null;
+        try {
+            urlusr = new URL("http://"+ip.trim()+"/informe.php?caso=9");
+        } catch (Exception e) {
+            System.out.println("No se pudo rescatar usuario");
+        }
+        new DownloadFilesTaskUsuario().execute(urlusr);
+    }
+
+    public void Cargar(){
+        new ReadJSON().execute(URL);
     }
 
     public void ConfigurarGrafico(){
-        chart = (GraphView) findViewById(R.id.chart);
+        Grafico = (ScatterChart) findViewById(R.id.ScatterChart);
 
-        //Títulos
-        chart.setTitle("Gráfico Temperatura/Humedad");
-        chart.getGridLabelRenderer().setVerticalAxisTitle("Humedad");
-        chart.getGridLabelRenderer().setHorizontalAxisTitle("Temperatura");
+        Dato = new ArrayList<>();
+        Datox = new ArrayList<String>();
 
-        //Min y max de X
-        chart.getViewport().setXAxisBoundsManual(true);
-        chart.getViewport().setMinX(0);
-        chart.getViewport().setMaxX(60);
+        YAxis left = Grafico.getAxisLeft();
+        left.setDrawAxisLine(false); // no axis line
+        left.setDrawGridLines(false); // no grid lines
+        left.setDrawZeroLine(true); // draw a zero line
+        left.setAxisMinValue(0f);   // start at zero
 
-        //Min y max de y
-        chart.getViewport().setYAxisBoundsManual(true);
-        chart.getViewport().setMinY(0);
-        chart.getViewport().setMaxY(100);
 
+        YAxis right = Grafico.getAxisRight();
+        right.setDrawLabels(false); // no axis labels
+        right.setDrawGridLines(false); // no grid lines
+
+
+        Grafico.setDescription("");
+        Grafico.setFocusable(false);
+
+        XAxis xAxis = Grafico.getXAxis();
+        xAxis.setLabelRotationAngle(-30);
+
+        Grafico.animateY(2500);
     }
 
-    public void GetTempHum (){
-        new ReadJSON().execute(stringUrl);
-    }
+    private class ReadJSON extends AsyncTask<URL, Void, String> {    //Tarea asíncrona para leer JSON
 
-    public void ObtenerDatosReady(){
-        if (Contador <= 5){
-            new ReadJSON().execute(stringUrl);
-        } else {
-            try {
-                Collections.sort(datos);
-                Iterator itDatos=datos.iterator();
-
-                while (itDatos.hasNext()) {
-                    SensorData elementoLista = (SensorData) itDatos.next();
-                    elementoLista.getTemperatura();
-                    elementoLista.getHumedad();
-                    series.appendData(new DataPoint(elementoLista.getTemperatura(), elementoLista.getHumedad()), false, 100);
-                    chart.addSeries(series);
-                }
-            }catch (Exception exc){
-                exc.printStackTrace();
-            }
-
-            Toast.makeText(this, "Gráfico cargado", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private class ReadJSON extends AsyncTask<String, Void, String> {    //Tarea asíncrona para leer JSON
-
-        protected String doInBackground(String... urls) {
-            try {
-                Thread.sleep(5000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-            return readJSONFeed(urls[0]);
+        protected String doInBackground(URL... urls) {
+            URL url = urls[0];
+            return readJSONFeed(url);
         }
 
         protected void onPostExecute(String result) {
             try {
+                ExisteDato = Boolean.FALSE;
                 JSONArray array = new JSONArray(result);
                 for (int i = 0; i < array.length(); i++) {
                     JSONObject row = array.optJSONObject(i);
-
-                    if (row.getString("ID").equals(id)){
-                        if (row.getString("Temperatura").trim().toUpperCase().equals("-99")){
-                            iTemperatura  = -99;
+                    if (!row.getString("_id").equals("0")){
+                        if (row.getString("temperatura").trim().toUpperCase().equals("-99")) {
+                            ExisteT = Boolean.FALSE;
                         } else {
-                            dTemperatura = Double.parseDouble(row.getString("Temperatura"));
-                            iTemperatura = dTemperatura.intValue();
+                            iTemperatura = Integer.parseInt(row.getString("temperatura"));
+                            ExisteT = Boolean.TRUE;
                         }
-                        if (row.getString("Humedad").trim().toUpperCase().equals("-99")){
-                            iHumedad  = -99;
-                        } else {
-                            dHumedad = Double.parseDouble(row.getString("Humedad"));
-                            iHumedad = dHumedad.intValue();
+                        if (row.getString("humedad").trim().toUpperCase().equals("-99")) {
+                            ExisteH = Boolean.FALSE;
+                        }  else {
+                            iHumedad = Integer.parseInt(row.getString("humedad"));
+                            ExisteH = Boolean.TRUE;
                         }
 
-                        datos.add(new SensorData(iTemperatura, iHumedad));
-                        Contador = Contador + 1;
-                        ObtenerDatosReady();
+                        if (ExisteT && ExisteH ){
+                            Dato.add(new Entry(iTemperatura, iHumedad));
+                            ExisteDato = Boolean.TRUE;
+                        }
+
                     }
+                }
+                if (ExisteDato){
+                    for (int i = 1; i <= 100; i++) {   //Lleno el label de humedad
+                        Datox.add(String.valueOf(i));
+                    }
+                    dataset = new ScatterDataSet(Dato, "Temperatura vs Humedad");
+                    scatter = new ScatterData(Datox, dataset);
+                    dataset.setValueTextColor(Color.rgb(0,60,160));
+                    dataset.setScatterShape(ScatterChart.ScatterShape.CIRCLE);
+                    dataset.setScatterShapeSize(10);
+                    dataset.setDrawValues(false);
+                    Grafico.setData(scatter);
+                } else {
+                    message("No existe información del día");
                 }
             } catch (Exception e) {
                 Log.d("ReadJSON", e.getLocalizedMessage());
@@ -150,32 +172,88 @@ public class ChartActivity extends AppCompatActivity {
         }
     }
 
-    public String readJSONFeed(String URL) {       //Descarga los datos JSON
-        StringBuilder stringBuilder = new StringBuilder();
-        HttpClient httpClient = new DefaultHttpClient();
-        HttpGet httpGet = new HttpGet(URL);
+    public String readJSONFeed(URL url) {       //Descarga los datos JSON
+        HttpURLConnection urlConnection = null;
         try {
-            HttpResponse response = httpClient.execute(httpGet);
-            StatusLine statusLine = response.getStatusLine();
-            int statusCode = statusLine.getStatusCode();
-            if (statusCode == 200) {
-                HttpEntity entity = response.getEntity();
-                InputStream inputStream = entity.getContent();
-                BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(inputStream));
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    line = line.toString().replace("NaN","-99");
-                    stringBuilder.append(line);
-                }
-                inputStream.close();
-            } else {
-                Log.d("JSON", "Error al descargar el archivo");
-            }
-        } catch (Exception e) {
-            Log.d("readJSONFeed", e.getLocalizedMessage());
+            urlConnection = (HttpURLConnection) url.openConnection();
+        } catch (IOException e) {
+            return "Error de Conexión";
         }
-        return stringBuilder.toString();
+        try {
+            InputStream in = new BufferedInputStream(urlConnection.getInputStream());
+            BufferedReader r = new BufferedReader(new InputStreamReader(in));
+            String x = "";
+            x = r.readLine();
+            String total = "";
+
+            while (x != null) {
+                total += x;
+                x = r.readLine();
+            }
+            return total;
+
+        } catch (IOException e) {
+            return "Error de manejo de stream";
+        } finally {
+            urlConnection.disconnect();
+        }
+    }
+
+    private class DownloadFilesTaskUsuario extends AsyncTask<URL, Integer, String> {    //Realiza la conexión y retorna el usuario
+        protected String doInBackground(URL... urls) {
+            URL url = urls[0];
+            System.out.println(url);
+            HttpURLConnection urlConnection = null;
+            try {
+                urlConnection = (HttpURLConnection) url.openConnection();
+            } catch (IOException e) {
+                return "Error de Conexión";
+            }
+            try {
+                InputStream in = new BufferedInputStream(urlConnection.getInputStream());
+                //readStream(in);
+                BufferedReader r = new BufferedReader(new InputStreamReader(in));
+                String x = "";
+                x = r.readLine();
+                String total = "";
+
+                while (x != null) {
+                    total += x;
+                    x = r.readLine();
+                }
+                return total;
+
+            } catch (IOException e) {
+                return "Error de manejo de stream";
+            } finally {
+                urlConnection.disconnect();
+            }
+        }
+
+        protected void onPostExecute(String resultado) {
+            String[] datosusuario = resultado.split(",");
+            String usuario = datosusuario[0];
+
+            if (!API.equals("")){
+                Date cDate = new Date();
+                String fDate = new SimpleDateFormat("dd/MM/yy").format(cDate);
+
+                System.out.println(fDate);
+
+                ApiURL = "https://api.mlab.com/api/1/databases/efficientmdb/collections/HistoricoCondensacion?q={'fecha':'"+fDate+"','id_usuario':"+usuario+"}&apiKey="+ API.trim();
+                System.out.println(ApiURL);
+                URL = null;
+                try {
+                    URL = new URL(ApiURL);
+                } catch(MalformedURLException e) {
+                    e.printStackTrace();
+                }
+                ConfigurarGrafico();
+                Cargar();
+            } else {
+                message("No se ha encontrado API KEY, debe ingresarla en configuraciones");
+            }
+        }
     }
 
     @Override

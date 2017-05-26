@@ -26,9 +26,14 @@ import org.apache.http.impl.client.DefaultHttpClient;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.nio.channels.CancelledKeyException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -38,13 +43,14 @@ import java.util.List;
 import java.util.Locale;
 
 public class ServicePushVentilation extends Service{      //Servicio encargado de calcular tiempos y enviar notificaciones push
-    private String estado, url, horainicio, horatermino;
+    private String estado, ip, horainicio, horatermino;
     private String[] splithora;
     private Date dHoraInicio, dHoraTermino, dHoraActual;
     private Integer Hora, Minutos, MinutosAbiertos, MinutosCerrados, TiempoRefresco, Porcentaje, MetaConsumo;
     private Boolean Llamar, Primer, Registrar;
     private Calendar c;
     private SharedPreferences prefs;
+    private URL url;
     public static boolean StopNotifications = false;
     private List<String> ubicaciones = new ArrayList<String>();
 
@@ -66,13 +72,26 @@ public class ServicePushVentilation extends Service{      //Servicio encargado d
         TiempoRefresco = 0;
 
         //URL ARDUINO
-        url = prefs.getString("IPRaspberry", "");
+        ip = prefs.getString("IPRaspberry", "");
+
+        url = null;
+        try {
+            url = new URL("http://" + ip + "/informe.php?caso=8");
+        } catch (MalformedURLException e) {
+            Log.d("ServicioVentilacion", e.getLocalizedMessage());
+        }
+
+
 
         //SETEA TIEMPO DE REFRESCO
         TiempoRefresco = 10000;
 
         //SETEA PORCENTAJE DE ACEPTACIÓN
         Porcentaje = Integer.parseInt(prefs.getString("PAceptacion","100"));
+
+        //SETEA HORAS
+        horainicio = prefs.getString("HoraInicio", "");
+        horatermino = prefs.getString("HoraTermino","");
 
         c = Calendar.getInstance();
 
@@ -85,6 +104,7 @@ public class ServicePushVentilation extends Service{      //Servicio encargado d
             dHoraInicio.setHours(Hora);
             dHoraInicio.setMinutes(Minutos);
             dHoraInicio.setSeconds(0);
+            System.out.println("INICIO:" + dHoraInicio);
 
             //Configura hora de término con la fecha de hoy
             dHoraTermino = c.getTime();
@@ -94,8 +114,10 @@ public class ServicePushVentilation extends Service{      //Servicio encargado d
             dHoraTermino.setHours(Hora);
             dHoraTermino.setMinutes(Minutos);
             dHoraTermino.setSeconds(0);
+            System.out.println("FINAL:" + dHoraTermino);
         } catch (Exception e) {
             e.printStackTrace();
+
         }
 
         Llamar = DentroDeHora();    //Valida si la hora actual está dentro del rango
@@ -116,7 +138,7 @@ public class ServicePushVentilation extends Service{      //Servicio encargado d
     }
 
     public void ObtenerDatosArduino(){      //Inicia el asynctask por primera vez
-        new ReadJSON().execute(url);
+        new DownloadFilesTaskDatos().execute(url);
     }
 
     public void ObtenerDatosReady(){        //Se ejecuta luego del primer postonexecute y sigue hasta que se termine el tiempo de preguntar
@@ -130,50 +152,99 @@ public class ServicePushVentilation extends Service{      //Servicio encargado d
                 MinutosAbiertos = MinutosAbiertos + TiempoRefresco;
             }
             System.out.println("Vuelvo a llamar");
-            new ReadJSON().execute(url);
+            new DownloadFilesTaskDatos().execute(url);
         } else {
             if (Registrar) {
                 AlmacenaDatos(MinutosAbiertos, MinutosCerrados);
                 Registrar = false;
             }
-            //Toast.makeText(getBaseContext(), "Minutos abierto: " + MinutosAbiertos.toString() + " Minutos cerrado: " + MinutosCerrados.toString(), Toast.LENGTH_SHORT).show();
         }
     }
 
-    private class ReadJSON extends AsyncTask<String, Void, String> {    //Tarea asíncrona para leer JSON
+    private class DownloadFilesTaskDatos extends AsyncTask<URL, Integer, String> {
+        protected String doInBackground(URL... urls) {
+            if (!DownloadFilesTaskDatos.this.isCancelled()) {
+                if (Primer) {
+                    URL url = urls[0];
+                    HttpURLConnection urlConnection = null;
+                    try {
+                        urlConnection = (HttpURLConnection) url.openConnection();
+                    } catch (IOException e) {
+                        return "Error de Conexión";
+                    }
+                    try {
+                        InputStream in = new BufferedInputStream(urlConnection.getInputStream());
+                        //readStream(in);
+                        BufferedReader r = new BufferedReader(new InputStreamReader(in));
+                        String x = "";
+                        x = r.readLine();
+                        String total = "";
 
-        protected String doInBackground(String... urls) {
-            if (!ReadJSON.this.isCancelled()){
-                if (Primer){
-                    return readJSONFeed(urls[0]);
+                        while (x != null) {
+                            total += x;
+                            x = r.readLine();
+                        }
+                        return total;
+
+                    } catch (IOException e) {
+                        return "Error de manejo de stream";
+                    } finally {
+                        urlConnection.disconnect();
+                    }
                 } else {
                     try {
-                        Thread.sleep(TiempoRefresco * 60 * 1000); //Minutos a milisegundos
+                        Thread.sleep(TiempoRefresco * 60 * 1000); //Minutos a milisegundos   COMENTAR PARA PROBAR
                         //Thread.sleep(10000);
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
-                    return readJSONFeed(urls[0]);
+                    URL url = urls[0];
+                    HttpURLConnection urlConnection = null;
+                    try {
+                        urlConnection = (HttpURLConnection) url.openConnection();
+                    } catch (IOException e) {
+                        return "Error de Conexión";
+                    }
+                    try {
+                        InputStream in = new BufferedInputStream(urlConnection.getInputStream());
+                        //readStream(in);
+                        BufferedReader r = new BufferedReader(new InputStreamReader(in));
+                        String x = "";
+                        x = r.readLine();
+                        String total = "";
+
+                        while (x != null) {
+                            total += x;
+                            x = r.readLine();
+                        }
+                        return total;
+
+                    } catch (IOException e) {
+                        return "Error de manejo de stream";
+                    } finally {
+                        urlConnection.disconnect();
+                    }
                 }
             } else {
                 return null;
             }
         }
 
-        protected void onPostExecute(String result) {
+        protected void onPostExecute(String resultado) {
             try {
-                JSONArray array = new JSONArray(result);
+                String[] datosresultados = resultado.split(";");
                 int TotalSensores=0;
                 int SensoresAbiertos=0;
-                for (int i = 0; i < array.length(); i++) {
-                    JSONObject row = array.optJSONObject(i);
-
+                for (String temporal : datosresultados) {
+                    String[] dividirDatos = temporal.split(",");
                     for (int x = 0; x < ubicaciones.size(); x++) {
                         String separaubicacion[] = ubicaciones.get(x).split("-");
-                        if (row.getString("ID").equals(separaubicacion[0].trim())) {
+                        System.out.println(dividirDatos[0] + " - " + dividirDatos[1] + " - " + dividirDatos[2] + " - " + dividirDatos[3]);
+                        if (dividirDatos[0].equals(separaubicacion[0].trim())) {
                             if (separaubicacion[3].trim().equals("SI")){
                                 TotalSensores = TotalSensores + 1;
-                                if (row.getString("Ventana").trim().equals("1")) { //Abierta
+                                System.out.println("ventana:" + separaubicacion[3]);
+                                if (dividirDatos[3].trim().equals("1")) { //Abierta
                                     SensoresAbiertos = SensoresAbiertos + 1;
                                 }
                             }
@@ -211,37 +282,10 @@ public class ServicePushVentilation extends Service{      //Servicio encargado d
                 }
                 ObtenerDatosReady();
             } catch (Exception e) {
-                Log.d("ReadJSON", e.getLocalizedMessage());
+                Log.d("DownloadDatos", e.getLocalizedMessage());
             }
             Primer = false;
         }
-    }
-
-    public String readJSONFeed(String URL) {       //Descarga los datos JSON
-        StringBuilder stringBuilder = new StringBuilder();
-        HttpClient httpClient = new DefaultHttpClient();
-        HttpGet httpGet = new HttpGet(URL);
-        try {
-            HttpResponse response = httpClient.execute(httpGet);
-            StatusLine statusLine = response.getStatusLine();
-            int statusCode = statusLine.getStatusCode();
-            if (statusCode == 200) {
-                HttpEntity entity = response.getEntity();
-                InputStream inputStream = entity.getContent();
-                BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(inputStream));
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    stringBuilder.append(line);
-                }
-                inputStream.close();
-            } else {
-                Log.d("JSON", "Error al descargar el archivo");
-            }
-        } catch (Exception e) {
-            Log.d("readJSONFeed", e.getLocalizedMessage());
-        }
-        return stringBuilder.toString();
     }
 
     public boolean DentroDeHora(){
